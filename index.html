@@ -50,11 +50,17 @@
   .scan-btn:active { opacity: 0.88; }
 
   .camera-wrap { background: #000; border-radius: var(--radius-sm); overflow: hidden; margin-top: 12px; display: none; position: relative; }
-  .camera-wrap video { width: 100%; display: block; max-height: 240px; object-fit: cover; }
-  .scan-guide { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 210px; height: 76px; border: 2px solid #5DCAA5; border-radius: 4px; }
+  .camera-wrap video { width: 100%; display: block; height: 56vh; max-height: 540px; object-fit: cover; }
+  .scan-guide { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 280px; height: 120px; border: 2px solid #5DCAA5; border-radius: 4px; }
   .scan-bar { position: absolute; left: 0; width: 100%; height: 2px; background: #1D9E75; top: 0; animation: sweep 1.6s ease-in-out infinite alternate; }
   @keyframes sweep { 0%{top:0} 100%{top:100%} }
-  .camera-label { position: absolute; bottom: 8px; left: 0; right: 0; text-align: center; font-size: 12px; color: rgba(255,255,255,0.75); }
+  .camera-label { position: absolute; top: 8px; left: 0; right: 0; text-align: center; font-size: 12px; color: rgba(255,255,255,0.75); }
+  .cam-ctrl { position: absolute; bottom: 10px; left: 12px; right: 12px; display: flex; align-items: center; gap: 10px; }
+  .cam-ctrl input[type=range] { flex: 1; height: 24px; -webkit-appearance: none; appearance: none; background: transparent; }
+  .cam-ctrl input[type=range]::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: rgba(255,255,255,0.45); }
+  .cam-ctrl input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 24px; height: 24px; border-radius: 50%; background: #fff; margin-top: -10px; }
+  .torch-btn { flex: 0 0 auto; height: 36px; padding: 0 14px; border-radius: 18px; border: 1px solid rgba(255,255,255,0.6); background: rgba(0,0,0,0.35); color: #fff; font-size: 13px; -webkit-appearance: none; }
+  .torch-btn.on { background: #fff; color: #1A1A18; }
 
   .divider { text-align: center; color: var(--text-hint); font-size: 12px; margin: 14px 0; }
 
@@ -139,7 +145,11 @@
       <div class="camera-wrap" id="camera-wrap">
         <video id="video" playsinline autoplay muted></video>
         <div class="scan-guide"><div class="scan-bar"></div></div>
-        <div class="camera-label">バーコードに合わせてください</div>
+        <div class="camera-label">枠に合わせて10〜15cmほど離してください</div>
+        <div class="cam-ctrl">
+          <input type="range" id="zoom-slider" style="display:none;">
+          <button class="torch-btn" id="torch-btn" style="display:none;">ライト</button>
+        </div>
       </div>
       <button class="btn btn-stop" id="stop-btn" style="display:none;">スキャン停止</button>
     </div>
@@ -159,9 +169,8 @@
 
   <!-- 一覧タブ -->
   <div class="screen" id="screen-list">
-    <div class="summary">
+    <div class="summary" style="grid-template-columns: 1fr;">
       <div class="stat"><div class="stat-label">品目数</div><div class="stat-value" id="st-items">0</div></div>
-      <div class="stat"><div class="stat-label">総計数</div><div class="stat-value" id="st-total">0</div></div>
     </div>
     <div id="list-wrap"></div>
   </div>
@@ -286,9 +295,6 @@ document.getElementById('inp-code').addEventListener('keydown', function (e) {
 // ── 一覧 ───────────────────────────────────────────────
 function renderList() {
   document.getElementById('st-items').textContent = items.length;
-  var total = 0;
-  for (var i = 0; i < items.length; i++) total += items[i].qty;
-  document.getElementById('st-total').textContent = total;
 
   var wrap = document.getElementById('list-wrap');
   if (!items.length) {
@@ -448,19 +454,23 @@ function startScan() {
   var hints = new Map();
   hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [
     ZXing.BarcodeFormat.EAN_13, ZXing.BarcodeFormat.EAN_8,
+    ZXing.BarcodeFormat.UPC_A, ZXing.BarcodeFormat.UPC_E,
     ZXing.BarcodeFormat.CODE_128, ZXing.BarcodeFormat.CODE_39,
+    ZXing.BarcodeFormat.CODE_93, ZXing.BarcodeFormat.CODABAR,
     ZXing.BarcodeFormat.ITF, ZXing.BarcodeFormat.QR_CODE
   ]);
   hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
 
   codeReader = new ZXing.BrowserMultiFormatReader(hints);
+  codeReader.timeBetweenDecodingAttempts = 80;
   document.getElementById('camera-wrap').style.display = 'block';
   stopBtn.style.display = 'flex';
   document.getElementById('scan-label').textContent = 'スキャン中…（タップで停止）';
   isScanning = true;
 
+  setTimeout(setupCameraControls, 900);
   codeReader.decodeFromConstraints(
-    { video: { facingMode: { ideal: 'environment' } } },
+    { video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } } },
     document.getElementById('video'),
     function (result, err) {
       if (result) onScanSuccess(result.getText());
@@ -483,7 +493,46 @@ function onScanSuccess(text) {
   toast('読み取り: ' + text);
 }
 
+var torchOn = false;
+function setupCameraControls() {
+  var v = document.getElementById('video');
+  var stream = v.srcObject;
+  if (!stream) return;
+  var track = stream.getVideoTracks()[0];
+  if (!track || !track.getCapabilities) return;
+  var caps = {};
+  try { caps = track.getCapabilities(); } catch (e) { return; }
+
+  var slider = document.getElementById('zoom-slider');
+  if (caps.zoom && typeof caps.zoom.min === 'number') {
+    slider.min = caps.zoom.min;
+    slider.max = Math.min(caps.zoom.max, 5);
+    slider.step = caps.zoom.step || 0.1;
+    var cur = (track.getSettings && track.getSettings().zoom) || caps.zoom.min;
+    slider.value = cur;
+    slider.style.display = 'block';
+    slider.oninput = function () {
+      track.applyConstraints({ advanced: [{ zoom: parseFloat(slider.value) }] }).catch(function () {});
+    };
+  }
+
+  var tBtn = document.getElementById('torch-btn');
+  if (caps.torch) {
+    tBtn.style.display = 'block';
+    torchOn = false;
+    tBtn.classList.remove('on');
+    tBtn.onclick = function () {
+      torchOn = !torchOn;
+      tBtn.classList.toggle('on', torchOn);
+      track.applyConstraints({ advanced: [{ torch: torchOn }] }).catch(function () {});
+    };
+  }
+}
+
 function stopScan() {
+  document.getElementById('zoom-slider').style.display = 'none';
+  document.getElementById('torch-btn').style.display = 'none';
+  torchOn = false;
   if (codeReader) { try { codeReader.reset(); } catch (e) {} codeReader = null; }
   document.getElementById('camera-wrap').style.display = 'none';
   stopBtn.style.display = 'none';
