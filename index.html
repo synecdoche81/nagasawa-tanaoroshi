@@ -197,12 +197,11 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.18.6/umd/index.min.js"></script>
+<script src="zxing-reader.js"></script>
 <script>
 // ── 状態 ──────────────────────────────────────────────
 var KEY = 'nagasawa_tanaooshi_v2';
 var items = [];
-var codeReader = null;
 var isScanning = false;
 var audioCtx = null;
 
@@ -429,9 +428,15 @@ document.getElementById('reset-btn').addEventListener('click', function () {
   toast('すべて削除しました');
 });
 
-// ── バーコードスキャン ─────────────────────────────────
+// ── バーコードスキャン（zxing-cpp WASM版）──────────────
 var scanBtn = document.getElementById('scan-btn');
 var stopBtn = document.getElementById('stop-btn');
+var scanStream = null;
+var scanTimer = null;
+var scanBusy = false;
+var scanCanvas = document.createElement('canvas');
+var scanCtx = null;
+var SCAN_FORMATS = ['EAN-13', 'EAN-8', 'UPC-A', 'UPC-E', 'Code128', 'Code39', 'Code93', 'Codabar', 'ITF', 'QRCode'];
 
 scanBtn.addEventListener('click', function () {
   if (isScanning) { stopScan(); return; }
@@ -444,39 +449,25 @@ function startScan() {
     toast('この開き方ではカメラを使えません。アプリのURL（https）から開いてください');
     return;
   }
-  if (typeof ZXing === 'undefined') {
-    toast('読み取り機能を準備中です。通信環境を確認して再度お試しください');
+  if (typeof ZXingWASM === 'undefined' || !ZXingWASM.readBarcodes) {
+    toast('読み取りエンジンを読み込み中です。数秒待ってからもう一度押してください');
     return;
   }
-  // 効果音はユーザー操作起点で初期化（iOSの制約）
   try { if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {}
 
-  var hints = new Map();
-  hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [
-    ZXing.BarcodeFormat.EAN_13, ZXing.BarcodeFormat.EAN_8,
-    ZXing.BarcodeFormat.UPC_A, ZXing.BarcodeFormat.UPC_E,
-    ZXing.BarcodeFormat.CODE_128, ZXing.BarcodeFormat.CODE_39,
-    ZXing.BarcodeFormat.CODE_93, ZXing.BarcodeFormat.CODABAR,
-    ZXing.BarcodeFormat.ITF, ZXing.BarcodeFormat.QR_CODE
-  ]);
-  hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
-
-  codeReader = new ZXing.BrowserMultiFormatReader(hints);
-  codeReader.timeBetweenDecodingAttempts = 80;
-  document.getElementById('camera-wrap').style.display = 'block';
-  stopBtn.style.display = 'flex';
-  document.getElementById('scan-label').textContent = 'スキャン中…（タップで停止）';
-  isScanning = true;
-
-  setTimeout(setupCameraControls, 900);
-  codeReader.decodeFromConstraints(
-    { video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } } },
-    document.getElementById('video'),
-    function (result, err) {
-      if (result) onScanSuccess(result.getText());
-    }
-  ).catch(function (e) {
-    stopScan();
+  navigator.mediaDevices.getUserMedia({
+    video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }
+  }).then(function (stream) {
+    scanStream = stream;
+    var v = document.getElementById('video');
+    v.srcObject = stream;
+    document.getElementById('camera-wrap').style.display = 'block';
+    stopBtn.style.display = 'flex';
+    document.getElementById('scan-label').textContent = 'スキャン中…（タップで停止）';
+    isScanning = true;
+    setTimeout(setupCameraControls, 900);
+    scanTimer = setInterval(scanFrame, 150);
+  }).catch(function (e) {
     if (e && e.name === 'NotAllowedError') {
       toast('カメラへのアクセスを許可してください（設定 > このアプリ > カメラ）');
     } else {
@@ -485,20 +476,34 @@ function startScan() {
   });
 }
 
-function onScanSuccess(text) {
-  stopScan();
-  beep();
-  document.getElementById('inp-code').value = text;
-  if (getQty() === 0) setQty(1);
-  toast('読み取り: ' + text);
+function scanFrame() {
+  if (scanBusy || !isScanning) return;
+  var v = document.getElementById('video');
+  if (!v.videoWidth) return;
+  var cw = Math.floor(v.videoWidth * 0.9);
+  var ch = Math.floor(v.videoHeight * 0.6);
+  var cx = (v.videoWidth - cw) >> 1;
+  var cy = (v.videoHeight - ch) >> 1;
+  if (scanCanvas.width !== cw || scanCanvas.height !== ch) {
+    scanCanvas.width = cw; scanCanvas.height = ch;
+    scanCtx = scanCanvas.getContext('2d', { willReadFrequently: true });
+  }
+  scanCtx.drawImage(v, cx, cy, cw, ch, 0, 0, cw, ch);
+  var img;
+  try { img = scanCtx.getImageData(0, 0, cw, ch); } catch (e) { return; }
+  scanBusy = true;
+  ZXingWASM.readBarcodes(img, { formats: SCAN_FORMATS, tryHarder: true, tryRotate: true, tryInvert: true, maxNumberOfSymbols: 1 })
+    .then(function (res) {
+      scanBusy = false;
+      if (res && res.length && res[0].text && isScanning) onScanSuccess(res[0].text);
+    })
+    .catch(function () { scanBusy = false; });
 }
 
 var torchOn = false;
 function setupCameraControls() {
-  var v = document.getElementById('video');
-  var stream = v.srcObject;
-  if (!stream) return;
-  var track = stream.getVideoTracks()[0];
+  if (!scanStream) return;
+  var track = scanStream.getVideoTracks()[0];
   if (!track || !track.getCapabilities) return;
   var caps = {};
   try { caps = track.getCapabilities(); } catch (e) { return; }
@@ -529,11 +534,26 @@ function setupCameraControls() {
   }
 }
 
+function onScanSuccess(text) {
+  stopScan();
+  beep();
+  document.getElementById('inp-code').value = text;
+  if (getQty() === 0) setQty(1);
+  toast('読み取り: ' + text);
+}
+
 function stopScan() {
+  if (scanTimer) { clearInterval(scanTimer); scanTimer = null; }
+  scanBusy = false;
+  if (scanStream) {
+    scanStream.getTracks().forEach(function (t) { t.stop(); });
+    scanStream = null;
+  }
+  var v = document.getElementById('video');
+  if (v) v.srcObject = null;
   document.getElementById('zoom-slider').style.display = 'none';
   document.getElementById('torch-btn').style.display = 'none';
   torchOn = false;
-  if (codeReader) { try { codeReader.reset(); } catch (e) {} codeReader = null; }
   document.getElementById('camera-wrap').style.display = 'none';
   stopBtn.style.display = 'none';
   document.getElementById('scan-label').textContent = 'バーコードをスキャン';

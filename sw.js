@@ -1,4 +1,4 @@
-var CACHE = 'tanaoroshi-v2';
+var CACHE = 'tanaoroshi-v3';
 var ASSETS = [
   './',
   './index.html',
@@ -6,7 +6,8 @@ var ASSETS = [
   './icon-180.png',
   './icon-192.png',
   './icon-512.png',
-  'https://cdn.jsdelivr.net/npm/@zxing/library@0.18.6/umd/index.min.js'
+  './zxing-reader.js',
+  './zxing_reader.wasm'
 ];
 
 self.addEventListener('install', function (e) {
