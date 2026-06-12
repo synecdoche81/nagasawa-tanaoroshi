@@ -1,4 +1,4 @@
-var CACHE = 'tanaoroshi-v3';
+var CACHE = 'tanaoroshi-v4';
 var ASSETS = [
   './',
   './index.html',

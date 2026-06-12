@@ -50,7 +50,9 @@
   .scan-btn:active { opacity: 0.88; }
 
   .camera-wrap { background: #000; border-radius: var(--radius-sm); overflow: hidden; margin-top: 12px; display: none; position: relative; }
-  .camera-wrap video { width: 100%; display: block; height: 56vh; max-height: 540px; object-fit: cover; }
+  .camera-wrap video { width: 100%; display: block; height: 56vh; max-height: 540px; object-fit: cover; transition: height 0.25s; }
+  .camera-wrap.paused video { height: 20vh; }
+  .camera-wrap.paused .scan-guide, .camera-wrap.paused .cam-ctrl { display: none; }
   .scan-guide { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 280px; height: 120px; border: 2px solid #5DCAA5; border-radius: 4px; }
   .scan-bar { position: absolute; left: 0; width: 100%; height: 2px; background: #1D9E75; top: 0; animation: sweep 1.6s ease-in-out infinite alternate; }
   @keyframes sweep { 0%{top:0} 100%{top:100%} }
@@ -223,6 +225,7 @@ function showTab(id) {
     document.getElementById('tab-btn-' + t).classList.toggle('active', t === id);
     document.getElementById('screen-' + t).classList.toggle('active', t === id);
   });
+  if (id !== 'scan' && isScanning) stopScan();
   if (id === 'list') renderList();
   if (id === 'export') renderCSVPreview();
 }
@@ -285,6 +288,7 @@ function addItem() {
   save();
   document.getElementById('inp-code').value = '';
   setQty(0);
+  resumeScanIfNeeded();
 }
 document.getElementById('add-btn').addEventListener('click', addItem);
 document.getElementById('inp-code').addEventListener('keydown', function (e) {
@@ -428,12 +432,15 @@ document.getElementById('reset-btn').addEventListener('click', function () {
   toast('すべて削除しました');
 });
 
-// ── バーコードスキャン（zxing-cpp WASM版）──────────────
+// ── バーコードスキャン（zxing-cpp WASM / 連続スキャン対応）──
 var scanBtn = document.getElementById('scan-btn');
 var stopBtn = document.getElementById('stop-btn');
 var scanStream = null;
 var scanTimer = null;
 var scanBusy = false;
+var decodePaused = false;
+var lastCode = null;
+var lastCodeTime = 0;
 var scanCanvas = document.createElement('canvas');
 var scanCtx = null;
 var SCAN_FORMATS = ['EAN-13', 'EAN-8', 'UPC-A', 'UPC-E', 'Code128', 'Code39', 'Code93', 'Codabar', 'ITF', 'QRCode'];
@@ -459,14 +466,32 @@ function startScan() {
     video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }
   }).then(function (stream) {
     scanStream = stream;
+    decodePaused = false;
+    lastCode = null;
     var v = document.getElementById('video');
-    v.srcObject = stream;
-    document.getElementById('camera-wrap').style.display = 'block';
+    var wrap = document.getElementById('camera-wrap');
+    wrap.classList.remove('paused');
+    wrap.style.display = 'block';
     stopBtn.style.display = 'flex';
     document.getElementById('scan-label').textContent = 'スキャン中…（タップで停止）';
     isScanning = true;
+
+    // 新しい映像の再生が始まってから解析を開始する（残像フレーム対策）
+    var started = false;
+    function beginDecode() {
+      if (started || !isScanning) return;
+      started = true;
+      scanTimer = setInterval(scanFrame, 150);
+    }
+    v.addEventListener('playing', function h() {
+      v.removeEventListener('playing', h);
+      beginDecode();
+    });
+    v.srcObject = stream;
+    var p = v.play();
+    if (p && p.catch) p.catch(function () {});
+    setTimeout(beginDecode, 1500);
     setTimeout(setupCameraControls, 900);
-    scanTimer = setInterval(scanFrame, 150);
   }).catch(function (e) {
     if (e && e.name === 'NotAllowedError') {
       toast('カメラへのアクセスを許可してください（設定 > このアプリ > カメラ）');
@@ -477,9 +502,9 @@ function startScan() {
 }
 
 function scanFrame() {
-  if (scanBusy || !isScanning) return;
+  if (scanBusy || decodePaused || !isScanning) return;
   var v = document.getElementById('video');
-  if (!v.videoWidth) return;
+  if (!v.videoWidth || v.readyState < 2 || v.currentTime === 0) return;
   var cw = Math.floor(v.videoWidth * 0.9);
   var ch = Math.floor(v.videoHeight * 0.6);
   var cx = (v.videoWidth - cw) >> 1;
@@ -495,9 +520,31 @@ function scanFrame() {
   ZXingWASM.readBarcodes(img, { formats: SCAN_FORMATS, tryHarder: true, tryRotate: true, tryInvert: true, maxNumberOfSymbols: 1 })
     .then(function (res) {
       scanBusy = false;
-      if (res && res.length && res[0].text && isScanning) onScanSuccess(res[0].text);
+      if (res && res.length && res[0].text && isScanning && !decodePaused) onScanSuccess(res[0].text);
     })
     .catch(function () { scanBusy = false; });
+}
+
+function onScanSuccess(text) {
+  var now = Date.now();
+  if (text === lastCode && now - lastCodeTime < 3000) return; // 同一コードの連続誤読防止
+  lastCode = text;
+  lastCodeTime = now;
+  decodePaused = true;
+  beep();
+  document.getElementById('camera-wrap').classList.add('paused');
+  document.getElementById('inp-code').value = text;
+  if (getQty() === 0) setQty(1);
+  document.getElementById('scan-label').textContent = '読み取り済み — 「追加」で次のスキャンへ';
+  toast('読み取り: ' + text);
+}
+
+function resumeScanIfNeeded() {
+  if (!isScanning) return;
+  decodePaused = false;
+  lastCodeTime = Date.now(); // 直前商品の写り込みによる即時再読を3秒抑止
+  document.getElementById('camera-wrap').classList.remove('paused');
+  document.getElementById('scan-label').textContent = 'スキャン中…（タップで停止）';
 }
 
 var torchOn = false;
@@ -534,17 +581,11 @@ function setupCameraControls() {
   }
 }
 
-function onScanSuccess(text) {
-  stopScan();
-  beep();
-  document.getElementById('inp-code').value = text;
-  if (getQty() === 0) setQty(1);
-  toast('読み取り: ' + text);
-}
-
 function stopScan() {
   if (scanTimer) { clearInterval(scanTimer); scanTimer = null; }
   scanBusy = false;
+  decodePaused = false;
+  lastCode = null;
   if (scanStream) {
     scanStream.getTracks().forEach(function (t) { t.stop(); });
     scanStream = null;
@@ -554,7 +595,9 @@ function stopScan() {
   document.getElementById('zoom-slider').style.display = 'none';
   document.getElementById('torch-btn').style.display = 'none';
   torchOn = false;
-  document.getElementById('camera-wrap').style.display = 'none';
+  var wrap = document.getElementById('camera-wrap');
+  wrap.classList.remove('paused');
+  wrap.style.display = 'none';
   stopBtn.style.display = 'none';
   document.getElementById('scan-label').textContent = 'バーコードをスキャン';
   isScanning = false;
