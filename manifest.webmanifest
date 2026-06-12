@@ -1,0 +1,15 @@
+{
+  "name": "ナガサワの棚卸し",
+  "short_name": "棚卸し",
+  "description": "金物屋ナガサワの棚卸しアプリ",
+  "lang": "ja",
+  "display": "standalone",
+  "start_url": "./",
+  "scope": "./",
+  "background_color": "#F7F6F4",
+  "theme_color": "#1D7FC4",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

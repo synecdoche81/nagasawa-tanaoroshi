@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="ナガサワの棚卸し">
+<meta name="theme-color" content="#1D7FC4">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<title>ナガサワの棚卸し</title>
+<style>
+  :root {
+    --bg: #F7F6F4;
+    --surface: #FFFFFF;
+    --border: rgba(0,0,0,0.10);
+    --border-strong: rgba(0,0,0,0.18);
+    --text: #1A1A18;
+    --text-sub: #6B6B66;
+    --text-hint: #A8A89E;
+    --accent: #1D7FC4;
+    --accent-deep: #0C447C;
+    --danger: #C0392B;
+    --success: #1D9E75;
+    --radius: 10px;
+    --radius-sm: 8px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+  html, body { height: 100%; background: var(--bg); font-family: -apple-system, 'Helvetica Neue', sans-serif; color: var(--text); }
+  .app { display: flex; flex-direction: column; height: 100vh; height: 100dvh; max-width: 430px; margin: 0 auto; padding-bottom: env(safe-area-inset-bottom); }
+
+  .header { background: var(--surface); border-bottom: 0.5px solid var(--border); padding: calc(12px + env(safe-area-inset-top)) 16px 11px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+  .header-title { font-size: 17px; font-weight: 600; letter-spacing: -0.3px; }
+  .header-date { font-size: 12px; color: var(--text-sub); }
+
+  .tabs { display: flex; background: var(--surface); border-bottom: 0.5px solid var(--border); flex-shrink: 0; }
+  .tab { flex: 1; padding: 10px 0 9px; text-align: center; font-size: 12px; color: var(--text-sub); cursor: pointer; border-bottom: 2px solid transparent; }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 500; }
+  .tab svg { display: block; margin: 0 auto 3px; }
+
+  .screen { display: none; flex: 1; overflow-y: auto; padding: 14px; -webkit-overflow-scrolling: touch; }
+  .screen.active { display: block; }
+
+  .card { background: var(--surface); border-radius: var(--radius); border: 0.5px solid var(--border); padding: 14px; margin-bottom: 12px; }
+  .card-title { font-size: 12px; font-weight: 500; color: var(--text-sub); margin-bottom: 10px; letter-spacing: 0.5px; }
+
+  .scan-btn { width: 100%; padding: 15px; background: var(--accent); color: #fff; border: none; border-radius: var(--radius-sm); font-size: 16px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; -webkit-appearance: none; }
+  .scan-btn:active { opacity: 0.88; }
+
+  .camera-wrap { background: #000; border-radius: var(--radius-sm); overflow: hidden; margin-top: 12px; display: none; position: relative; }
+  .camera-wrap video { width: 100%; display: block; max-height: 240px; object-fit: cover; }
+  .scan-guide { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 210px; height: 76px; border: 2px solid #5DCAA5; border-radius: 4px; }
+  .scan-bar { position: absolute; left: 0; width: 100%; height: 2px; background: #1D9E75; top: 0; animation: sweep 1.6s ease-in-out infinite alternate; }
+  @keyframes sweep { 0%{top:0} 100%{top:100%} }
+  .camera-label { position: absolute; bottom: 8px; left: 0; right: 0; text-align: center; font-size: 12px; color: rgba(255,255,255,0.75); }
+
+  .divider { text-align: center; color: var(--text-hint); font-size: 12px; margin: 14px 0; }
+
+  input[type=text], input[type=number] {
+    width: 100%; height: 44px; padding: 0 12px;
+    border: 0.5px solid var(--border-strong); border-radius: var(--radius-sm);
+    font-size: 16px; background: var(--surface); color: var(--text);
+    -webkit-appearance: none; outline: none;
+  }
+  input:focus { border-color: var(--accent); }
+
+  .qty-row { display: flex; align-items: center; gap: 10px; margin: 12px 0; }
+  .step-btn { flex: 0 0 56px; height: 56px; border-radius: var(--radius-sm); border: 0.5px solid var(--border-strong); background: var(--surface); font-size: 28px; font-weight: 400; line-height: 1; cursor: pointer; color: var(--text); -webkit-appearance: none; }
+  .step-btn:active { background: var(--bg); }
+  .qty-input { flex: 1; height: 56px !important; text-align: center; font-size: 26px !important; font-weight: 600; }
+  .qty-label { font-size: 12px; color: var(--text-sub); margin-bottom: 4px; }
+
+  .btn { width: 100%; height: 46px; border: 0.5px solid var(--border-strong); border-radius: var(--radius-sm); font-size: 15px; cursor: pointer; background: var(--surface); color: var(--text); -webkit-appearance: none; font-weight: 500; display: flex; align-items: center; justify-content: center; gap: 8px; }
+  .btn:active { background: var(--bg); }
+  .btn-primary { background: var(--accent); color: #fff; border-color: var(--accent); font-size: 16px; font-weight: 600; }
+  .btn-primary:active { opacity: 0.88; }
+  .btn-stop { margin-top: 8px; color: var(--danger); border-color: #F09595; }
+  .btn + .btn { margin-top: 8px; }
+
+  .summary { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+  .stat { background: var(--surface); border-radius: var(--radius); border: 0.5px solid var(--border); padding: 12px 14px; }
+  .stat-label { font-size: 11px; color: var(--text-sub); letter-spacing: 0.4px; margin-bottom: 4px; }
+  .stat-value { font-size: 26px; font-weight: 600; letter-spacing: -0.5px; }
+
+  .item-list { background: var(--surface); border-radius: var(--radius); border: 0.5px solid var(--border); overflow: hidden; }
+  .item { display: flex; align-items: center; padding: 11px 12px; gap: 8px; border-bottom: 0.5px solid var(--border); }
+  .item:last-child { border-bottom: none; }
+  .item-main { flex: 1; min-width: 0; }
+  .item-code { font-size: 15px; font-weight: 600; font-family: 'Menlo', monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: 0.3px; }
+  .item-meta { font-size: 11px; color: var(--text-sub); margin-top: 2px; }
+  .item-qty-ctrl { display: flex; align-items: center; gap: 4px; }
+  .qty-btn { width: 34px; height: 34px; border-radius: 8px; border: 0.5px solid var(--border-strong); background: var(--bg); font-size: 20px; line-height: 1; cursor: pointer; color: var(--text); -webkit-appearance: none; }
+  .qty-btn:active { background: #E0DED8; }
+  .qty-num { min-width: 38px; text-align: center; font-size: 17px; font-weight: 600; }
+  .del-btn { background: none; border: none; cursor: pointer; padding: 6px 2px 6px 6px; color: var(--text-hint); -webkit-appearance: none; }
+  .del-btn:active { color: var(--danger); }
+
+  .empty { padding: 44px 20px; text-align: center; color: var(--text-hint); font-size: 14px; line-height: 1.7; }
+
+  .csv-preview { background: var(--bg); border-radius: var(--radius-sm); padding: 10px 12px; font-size: 11px; font-family: 'Menlo', monospace; color: var(--text-sub); white-space: pre; overflow-x: auto; margin-top: 10px; border: 0.5px solid var(--border); line-height: 1.6; }
+  .note { font-size: 11px; color: var(--text-hint); margin-top: 8px; line-height: 1.6; }
+
+  .toast { position: fixed; bottom: calc(24px + env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); background: rgba(30,30,28,0.92); color: #EFEFEB; padding: 9px 20px; border-radius: 20px; font-size: 13px; font-weight: 500; white-space: nowrap; opacity: 0; transition: opacity 0.25s; pointer-events: none; z-index: 9999; max-width: 90vw; overflow: hidden; text-overflow: ellipsis; }
+  .toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="header">
+    <div class="header-title">ナガサワの棚卸し</div>
+    <div class="header-date" id="date-el"></div>
+  </div>
+
+  <div class="tabs">
+    <div class="tab active" id="tab-btn-scan">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="3" width="5" height="5" rx="1"/><rect x="16" y="3" width="5" height="5" rx="1"/><rect x="3" y="16" width="5" height="5" rx="1"/><path d="M16 16h5M16 21h5M21 16v5"/></svg>
+      計数
+    </div>
+    <div class="tab" id="tab-btn-list">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><circle cx="3.5" cy="6" r="1"/><circle cx="3.5" cy="12" r="1"/><circle cx="3.5" cy="18" r="1"/></svg>
+      一覧
+    </div>
+    <div class="tab" id="tab-btn-export">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+      出力
+    </div>
+  </div>
+
+  <!-- 計数タブ -->
+  <div class="screen active" id="screen-scan">
+    <div class="card">
+      <button class="scan-btn" id="scan-btn">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="5" height="5" rx="1"/><rect x="16" y="3" width="5" height="5" rx="1"/><rect x="3" y="16" width="5" height="5" rx="1"/><path d="M16 16h5M16 21h5M21 16v5"/></svg>
+        <span id="scan-label">バーコードをスキャン</span>
+      </button>
+      <div class="camera-wrap" id="camera-wrap">
+        <video id="video" playsinline autoplay muted></video>
+        <div class="scan-guide"><div class="scan-bar"></div></div>
+        <div class="camera-label">バーコードに合わせてください</div>
+      </div>
+      <button class="btn btn-stop" id="stop-btn" style="display:none;">スキャン停止</button>
+    </div>
+
+    <div class="divider">── 品番と数量 ──</div>
+
+    <div class="card">
+      <input type="text" id="inp-code" placeholder="品番 / JANコード（手入力も可）" autocomplete="off" autocapitalize="characters">
+      <div class="qty-row">
+        <button class="step-btn" id="qty-minus">−</button>
+        <input type="number" class="qty-input" id="inp-qty" value="0" min="0" inputmode="numeric" pattern="[0-9]*">
+        <button class="step-btn" id="qty-plus">＋</button>
+      </div>
+      <button class="btn btn-primary" id="add-btn">この内容で追加</button>
+    </div>
+  </div>
+
+  <!-- 一覧タブ -->
+  <div class="screen" id="screen-list">
+    <div class="summary">
+      <div class="stat"><div class="stat-label">品目数</div><div class="stat-value" id="st-items">0</div></div>
+      <div class="stat"><div class="stat-label">総計数</div><div class="stat-value" id="st-total">0</div></div>
+    </div>
+    <div id="list-wrap"></div>
+  </div>
+
+  <!-- 出力タブ -->
+  <div class="screen" id="screen-export">
+    <div class="card">
+      <div class="card-title">CSVを送る</div>
+      <button class="btn btn-primary" id="share-btn">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+        メール等で送信（共有）
+      </button>
+      <button class="btn" id="download-btn">CSVファイルを保存</button>
+      <button class="btn" id="copy-btn">クリップボードにコピー</button>
+      <div class="note">「メール等で送信」を押すとiPhoneの共有画面が開き、メール・Gmail・LINE・AirDropなどにCSVファイルを添付できます。</div>
+      <div class="csv-preview" id="csv-preview">（データなし）</div>
+    </div>
+    <div class="card">
+      <div class="card-title" style="color:var(--danger);">リセット</div>
+      <button class="btn" style="color:var(--danger); border-color:#F09595;" id="reset-btn">すべての棚卸しデータを削除</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.18.6/umd/index.min.js"></script>
+<script>
+// ── 状態 ──────────────────────────────────────────────
+var KEY = 'nagasawa_tanaooshi_v2';
+var items = [];
+var codeReader = null;
+var isScanning = false;
+var audioCtx = null;
+
+// ── 初期化 ─────────────────────────────────────────────
+(function init() {
+  try { items = JSON.parse(localStorage.getItem(KEY) || '[]'); } catch (e) { items = []; }
+  var d = new Date();
+  document.getElementById('date-el').textContent =
+    d.getFullYear() + '年' + (d.getMonth() + 1) + '月' + d.getDate() + '日';
+})();
+
+function save() {
+  try { localStorage.setItem(KEY, JSON.stringify(items)); } catch (e) {}
+}
+
+// ── タブ切替 ───────────────────────────────────────────
+function showTab(id) {
+  ['scan', 'list', 'export'].forEach(function (t) {
+    document.getElementById('tab-btn-' + t).classList.toggle('active', t === id);
+    document.getElementById('screen-' + t).classList.toggle('active', t === id);
+  });
+  if (id === 'list') renderList();
+  if (id === 'export') renderCSVPreview();
+}
+document.getElementById('tab-btn-scan').addEventListener('click', function () { showTab('scan'); });
+document.getElementById('tab-btn-list').addEventListener('click', function () { showTab('list'); });
+document.getElementById('tab-btn-export').addEventListener('click', function () { showTab('export'); });
+
+// ── トースト ───────────────────────────────────────────
+function toast(msg) {
+  var el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(el._t);
+  el._t = setTimeout(function () { el.classList.remove('show'); }, 2200);
+}
+
+// ── 読み取り成功音 ─────────────────────────────────────
+function beep() {
+  try {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    var o = audioCtx.createOscillator();
+    var g = audioCtx.createGain();
+    o.frequency.value = 1320;
+    g.gain.setValueAtTime(0.18, audioCtx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.12);
+    o.connect(g); g.connect(audioCtx.destination);
+    o.start(); o.stop(audioCtx.currentTime + 0.12);
+  } catch (e) {}
+}
+
+// ── 数量ステッパー ─────────────────────────────────────
+function getQty() {
+  var v = parseInt(document.getElementById('inp-qty').value, 10);
+  return isNaN(v) || v < 0 ? 0 : v;
+}
+function setQty(v) {
+  document.getElementById('inp-qty').value = Math.max(0, v);
+}
+document.getElementById('qty-minus').addEventListener('click', function () { setQty(getQty() - 1); });
+document.getElementById('qty-plus').addEventListener('click', function () { setQty(getQty() + 1); });
+
+// ── アイテム追加 ───────────────────────────────────────
+function addItem() {
+  var code = document.getElementById('inp-code').value.trim().replace(/\s+/g, '');
+  var qty = getQty();
+  if (!code) { toast('品番を入力するかスキャンしてください'); return; }
+  if (qty === 0) { toast('数量が0です。＋ボタンで数量を入れてください'); return; }
+
+  var existing = null;
+  for (var i = 0; i < items.length; i++) {
+    if (items[i].code === code) { existing = items[i]; break; }
+  }
+  if (existing) {
+    existing.qty += qty;
+    toast('累積: ' + code + ' → 計 ' + existing.qty);
+  } else {
+    items.push({ id: Date.now(), code: code, qty: qty });
+    toast('追加: ' + code + ' × ' + qty);
+  }
+  save();
+  document.getElementById('inp-code').value = '';
+  setQty(0);
+}
+document.getElementById('add-btn').addEventListener('click', addItem);
+document.getElementById('inp-code').addEventListener('keydown', function (e) {
+  if (e.key === 'Enter') { e.target.blur(); }
+});
+
+// ── 一覧 ───────────────────────────────────────────────
+function renderList() {
+  document.getElementById('st-items').textContent = items.length;
+  var total = 0;
+  for (var i = 0; i < items.length; i++) total += items[i].qty;
+  document.getElementById('st-total').textContent = total;
+
+  var wrap = document.getElementById('list-wrap');
+  if (!items.length) {
+    wrap.innerHTML = '<div class="empty">まだデータがありません<br>「計数」タブから追加してください</div>';
+    return;
+  }
+  var html = '<div class="item-list">';
+  for (var j = 0; j < items.length; j++) {
+    var it = items[j];
+    var t = new Date(it.id);
+    var meta = (t.getMonth() + 1) + '/' + t.getDate() + ' ' +
+      ('0' + t.getHours()).slice(-2) + ':' + ('0' + t.getMinutes()).slice(-2) + ' 登録';
+    html += '<div class="item">' +
+      '<div class="item-main"><div class="item-code">' + esc(it.code) + '</div>' +
+      '<div class="item-meta">' + meta + '</div></div>' +
+      '<div class="item-qty-ctrl">' +
+      '<button class="qty-btn" data-act="minus" data-id="' + it.id + '">−</button>' +
+      '<div class="qty-num">' + it.qty + '</div>' +
+      '<button class="qty-btn" data-act="plus" data-id="' + it.id + '">＋</button>' +
+      '</div>' +
+      '<button class="del-btn" data-act="del" data-id="' + it.id + '" aria-label="削除">' +
+      '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>' +
+      '</button></div>';
+  }
+  wrap.innerHTML = html + '</div>';
+}
+
+document.getElementById('list-wrap').addEventListener('click', function (e) {
+  var btn = e.target.closest('[data-act]');
+  if (!btn) return;
+  var id = Number(btn.getAttribute('data-id'));
+  var act = btn.getAttribute('data-act');
+  var it = null;
+  for (var i = 0; i < items.length; i++) { if (items[i].id === id) { it = items[i]; break; } }
+  if (!it) return;
+  if (act === 'minus') it.qty = Math.max(0, it.qty - 1);
+  if (act === 'plus') it.qty += 1;
+  if (act === 'del') {
+    if (!confirm(it.code + ' を削除しますか？')) return;
+    items = items.filter(function (x) { return x.id !== id; });
+  }
+  save();
+  renderList();
+});
+
+function esc(s) {
+  return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// ── CSV ─────────────────────────────────────────────────
+function csvFilename() {
+  var d = new Date();
+  return '棚卸し_' + d.getFullYear() +
+    ('0' + (d.getMonth() + 1)).slice(-2) +
+    ('0' + d.getDate()).slice(-2) + '.csv';
+}
+function buildCSV(withBom) {
+  var rows = [['品番', '数量', '登録日時']];
+  for (var i = 0; i < items.length; i++) {
+    var it = items[i];
+    rows.push([it.code, it.qty, new Date(it.id).toLocaleString('ja-JP')]);
+  }
+  var body = rows.map(function (r) {
+    return r.map(function (c) { return '"' + String(c).replace(/"/g, '""') + '"'; }).join(',');
+  }).join('\r\n');
+  return (withBom ? '\uFEFF' : '') + body;
+}
+function renderCSVPreview() {
+  var el = document.getElementById('csv-preview');
+  if (!items.length) { el.textContent = '（データなし）'; return; }
+  var lines = ['品番,数量'];
+  var n = Math.min(items.length, 6);
+  for (var i = 0; i < n; i++) lines.push(items[i].code + ',' + items[i].qty);
+  if (items.length > n) lines.push('… 他' + (items.length - n) + '件');
+  el.textContent = lines.join('\n');
+}
+
+// 共有（メール等）
+document.getElementById('share-btn').addEventListener('click', function () {
+  if (!items.length) { toast('データがありません'); return; }
+  var blob = new Blob([buildCSV(true)], { type: 'text/csv' });
+  var file;
+  try { file = new File([blob], csvFilename(), { type: 'text/csv' }); } catch (e) { file = null; }
+
+  if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
+    navigator.share({ files: [file], title: 'ナガサワ棚卸しデータ' })
+      .then(function () { toast('共有しました'); })
+      .catch(function (e) { if (e && e.name !== 'AbortError') toast('共有できませんでした'); });
+  } else {
+    // フォールバック: メール本文にCSVテキストを入れて起動
+    var text = buildCSV(false);
+    if (text.length > 1800) {
+      toast('データが多いため「CSVファイルを保存」をご利用ください');
+      return;
+    }
+    location.href = 'mailto:?subject=' + encodeURIComponent('ナガサワ棚卸しデータ ' + new Date().toLocaleDateString('ja-JP')) +
+      '&body=' + encodeURIComponent(text);
+  }
+});
+
+// ダウンロード
+document.getElementById('download-btn').addEventListener('click', function () {
+  if (!items.length) { toast('データがありません'); return; }
+  var blob = new Blob([buildCSV(true)], { type: 'text/csv;charset=utf-8;' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = csvFilename();
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+  toast('保存しました（ファイルAppに保存できます）');
+});
+
+// コピー
+document.getElementById('copy-btn').addEventListener('click', function () {
+  if (!items.length) { toast('データがありません'); return; }
+  navigator.clipboard.writeText(buildCSV(false))
+    .then(function () { toast('コピーしました'); })
+    .catch(function () { toast('コピーに失敗しました'); });
+});
+
+// リセット
+document.getElementById('reset-btn').addEventListener('click', function () {
+  if (!items.length) { toast('データがありません'); return; }
+  if (!confirm('すべての棚卸しデータ（' + items.length + '品目）を削除しますか？\nこの操作は元に戻せません。')) return;
+  items = [];
+  save();
+  renderList();
+  renderCSVPreview();
+  toast('すべて削除しました');
+});
+
+// ── バーコードスキャン ─────────────────────────────────
+var scanBtn = document.getElementById('scan-btn');
+var stopBtn = document.getElementById('stop-btn');
+
+scanBtn.addEventListener('click', function () {
+  if (isScanning) { stopScan(); return; }
+  startScan();
+});
+stopBtn.addEventListener('click', stopScan);
+
+function startScan() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    toast('この開き方ではカメラを使えません。アプリのURL（https）から開いてください');
+    return;
+  }
+  if (typeof ZXing === 'undefined') {
+    toast('読み取り機能を準備中です。通信環境を確認して再度お試しください');
+    return;
+  }
+  // 効果音はユーザー操作起点で初期化（iOSの制約）
+  try { if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {}
+
+  var hints = new Map();
+  hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [
+    ZXing.BarcodeFormat.EAN_13, ZXing.BarcodeFormat.EAN_8,
+    ZXing.BarcodeFormat.CODE_128, ZXing.BarcodeFormat.CODE_39,
+    ZXing.BarcodeFormat.ITF, ZXing.BarcodeFormat.QR_CODE
+  ]);
+  hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+
+  codeReader = new ZXing.BrowserMultiFormatReader(hints);
+  document.getElementById('camera-wrap').style.display = 'block';
+  stopBtn.style.display = 'flex';
+  document.getElementById('scan-label').textContent = 'スキャン中…（タップで停止）';
+  isScanning = true;
+
+  codeReader.decodeFromConstraints(
+    { video: { facingMode: { ideal: 'environment' } } },
+    document.getElementById('video'),
+    function (result, err) {
+      if (result) onScanSuccess(result.getText());
+    }
+  ).catch(function (e) {
+    stopScan();
+    if (e && e.name === 'NotAllowedError') {
+      toast('カメラへのアクセスを許可してください（設定 > このアプリ > カメラ）');
+    } else {
+      toast('カメラを起動できませんでした');
+    }
+  });
+}
+
+function onScanSuccess(text) {
+  stopScan();
+  beep();
+  document.getElementById('inp-code').value = text;
+  if (getQty() === 0) setQty(1);
+  toast('読み取り: ' + text);
+}
+
+function stopScan() {
+  if (codeReader) { try { codeReader.reset(); } catch (e) {} codeReader = null; }
+  document.getElementById('camera-wrap').style.display = 'none';
+  stopBtn.style.display = 'none';
+  document.getElementById('scan-label').textContent = 'バーコードをスキャン';
+  isScanning = false;
+}
+
+// ── Service Worker（オフライン起動対応）──────────────
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./sw.js').catch(function () {});
+}
+
+renderList();
+</script>
+</body>
+</html>
